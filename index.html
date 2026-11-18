@@ -1,0 +1,240 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Preceptorship Hours Log</title>
+<style>
+  :root {
+    --navy: #051d3c;
+    --blue: #095398;
+    --light: #24abe2;
+    --tint: #f4f7fb;
+    --text: #1d2433;
+    --border: #5b6b82;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; padding: 12px; background: #ffffff; color: var(--text);
+    font-family: Arial, Helvetica, sans-serif; font-size: 16px; line-height: 1.5;
+  }
+  .wrap { max-width: 640px; margin: 0 auto; }
+  header {
+    background: var(--navy); color: #ffffff; padding: 16px 20px;
+    border-left: 8px solid var(--light); border-radius: 4px;
+  }
+  header h1 { margin: 0; font-size: 22px; }
+  header p { margin: 4px 0 0; font-size: 15px; }
+  form {
+    background: var(--tint); border: 1px solid #c9d3e0; border-radius: 4px;
+    padding: 16px 20px; margin-top: 14px;
+  }
+  label { display: block; font-weight: bold; color: var(--navy); margin: 14px 0 4px; }
+  label:first-of-type { margin-top: 0; }
+  .hint { display: block; font-weight: normal; font-size: 14px; color: #3d4a5e; }
+  input, select {
+    width: 100%; font-size: 16px; padding: 10px; border: 2px solid var(--border);
+    border-radius: 4px; background: #ffffff; color: var(--text); font-family: inherit;
+  }
+  .row { display: flex; gap: 12px; flex-wrap: wrap; }
+  .row > div { flex: 1 1 200px; }
+  input:focus, select:focus, button:focus {
+    outline: 3px solid var(--light); outline-offset: 2px;
+  }
+  button {
+    font-family: inherit; font-size: 16px; font-weight: bold; cursor: pointer;
+    border-radius: 6px; padding: 12px 22px; border: 2px solid var(--blue);
+  }
+  button.primary { background: var(--blue); color: #ffffff; margin-top: 18px; }
+  button.secondary { background: #ffffff; color: var(--blue); }
+  button[disabled] { opacity: 0.6; cursor: wait; }
+  #status {
+    margin-top: 14px; padding: 12px 14px; border-radius: 4px; border-left: 6px solid transparent;
+    display: none; font-weight: bold;
+  }
+  #status.ok { display: block; background: #e9f6ee; border-color: #1b6e3c; color: #0f4a27; }
+  #status.err { display: block; background: #fdecec; border-color: #a4262c; color: #7a1a1f; }
+  #status.info { display: block; background: var(--tint); border-color: var(--blue); color: var(--navy); }
+  section.hours {
+    margin-top: 18px; padding: 14px 20px; border: 1px solid #c9d3e0;
+    border-left: 6px solid var(--blue); border-radius: 4px;
+  }
+  section.hours h2 { margin: 0 0 6px; font-size: 18px; color: var(--navy); }
+  section.hours p { margin: 0 0 10px; font-size: 15px; }
+  .small { font-size: 13px; color: #3d4a5e; margin-top: 18px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>Preceptorship Hours Log</h1>
+    <p>Log your hours before you leave. Your preceptor gets an email to verify them.</p>
+  </header>
+
+  <form id="logForm" novalidate>
+    <label for="name">Full name</label>
+    <input id="name" name="name" type="text" autocomplete="name" required maxlength="100">
+
+    <label for="email">Your email address
+      <span class="hint">Your receipt and your private hours summary are sent here.</span>
+    </label>
+    <input id="email" name="email" type="email" autocomplete="email" required maxlength="120">
+
+    <label for="preceptor">Preceptor</label>
+    <select id="preceptor" name="preceptor" required>
+      <option value="">Loading preceptors...</option>
+    </select>
+
+    <div class="row">
+      <div>
+        <label for="date">Date</label>
+        <input id="date" name="date" type="date" required>
+      </div>
+      <div>
+        <label for="hours">Hours
+          <span class="hint">Quarter hours are fine, like 7.5</span>
+        </label>
+        <input id="hours" name="hours" type="number" inputmode="decimal" step="0.25" min="0.25" max="24" required>
+      </div>
+    </div>
+
+    <button type="submit" class="primary" id="submitBtn">Submit hours</button>
+  </form>
+
+  <div id="status" role="status" aria-live="polite"></div>
+
+  <section class="hours" aria-labelledby="myHoursHeading">
+    <h2 id="myHoursHeading">Check my total hours</h2>
+    <p>Your totals are private. We email them to the address you entered above, so no one else can see them.</p>
+    <button type="button" class="secondary" id="summaryBtn">Email me my hours summary</button>
+  </section>
+
+  <p class="small">Problem with an entry or a preceptor missing from the list? Contact your course instructor.</p>
+</div>
+
+<script>
+  // 1. After you deploy the Apps Script web app, paste its URL (ends in /exec) between the quotes.
+  var WEB_APP_URL = "https://script.google.com/macros/s/AKfycbyvJO7M1dlkNArncN8BqqrkHgkikvjQoglX6fs_FNQVRlf3tbf-RMpwPOzGhmgw4BKk2A/exec";
+
+  var form = document.getElementById("logForm");
+  var statusBox = document.getElementById("status");
+  var submitBtn = document.getElementById("submitBtn");
+  var summaryBtn = document.getElementById("summaryBtn");
+  var select = document.getElementById("preceptor");
+  var dateInput = document.getElementById("date");
+
+  function show(type, text) {
+    statusBox.className = type;
+    statusBox.textContent = text;
+  }
+
+  function todayStr() {
+    var d = new Date();
+    var m = String(d.getMonth() + 1).padStart(2, "0");
+    var day = String(d.getDate()).padStart(2, "0");
+    return d.getFullYear() + "-" + m + "-" + day;
+  }
+  dateInput.max = todayStr();
+  dateInput.value = todayStr();
+
+  // Remember name and email on this device so repeat logging is quicker.
+  try {
+    document.getElementById("name").value = localStorage.getItem("ph_name") || "";
+    document.getElementById("email").value = localStorage.getItem("ph_email") || "";
+  } catch (e) { /* storage can be blocked inside an iframe; that is fine */ }
+
+  function configured() {
+    return WEB_APP_URL.indexOf("http") === 0;
+  }
+
+  function loadPreceptors() {
+    if (!configured()) {
+      select.innerHTML = '<option value="">Tool not connected yet</option>';
+      show("err", "This page has not been connected to its Google Sheet yet. See the setup guide.");
+      return;
+    }
+    fetch(WEB_APP_URL + "?action=preceptors")
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        var list = (data && data.preceptors) || [];
+        select.innerHTML = '<option value="">Select your preceptor</option>';
+        list.forEach(function (n) {
+          var o = document.createElement("option");
+          o.value = n; o.textContent = n;
+          select.appendChild(o);
+        });
+        if (!list.length) {
+          select.innerHTML = '<option value="">No preceptors available yet</option>';
+        }
+      })
+      .catch(function () {
+        select.innerHTML = '<option value="">Could not load preceptors</option>';
+        show("err", "We could not load the preceptor list. Please refresh the page or try again in a minute.");
+      });
+  }
+
+  function post(payload) {
+    return fetch(WEB_APP_URL, {
+      method: "POST",
+      headers: { "Content-Type": "text/plain;charset=utf-8" },
+      body: JSON.stringify(payload)
+    }).then(function (r) { return r.json(); });
+  }
+
+  form.addEventListener("submit", function (ev) {
+    ev.preventDefault();
+    statusBox.className = "";
+    if (!configured()) { show("err", "This page has not been connected to its Google Sheet yet."); return; }
+
+    var name = document.getElementById("name").value.trim();
+    var email = document.getElementById("email").value.trim();
+    var preceptor = select.value;
+    var date = dateInput.value;
+    var hours = document.getElementById("hours").value;
+
+    if (!name) { show("err", "Please enter your full name."); document.getElementById("name").focus(); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { show("err", "Please enter a valid email address."); document.getElementById("email").focus(); return; }
+    if (!preceptor) { show("err", "Please select your preceptor."); select.focus(); return; }
+    if (!date) { show("err", "Please choose the date."); dateInput.focus(); return; }
+    if (!hours || Number(hours) <= 0) { show("err", "Please enter the hours."); document.getElementById("hours").focus(); return; }
+
+    submitBtn.disabled = true;
+    show("info", "Saving...");
+
+    post({ action: "submit", name: name, email: email, preceptor: preceptor, date: date, hours: Number(hours) })
+      .then(function (res) {
+        if (res.ok) {
+          try { localStorage.setItem("ph_name", name); localStorage.setItem("ph_email", email); } catch (e) {}
+          show("ok", res.message);
+          document.getElementById("hours").value = "";
+          select.value = "";
+        } else {
+          show("err", res.message || "That did not go through. Please try again.");
+        }
+      })
+      .catch(function () {
+        show("err", "We could not reach the server. Your entry may not have saved, so please check your email for a receipt before trying again.");
+      })
+      .then(function () { submitBtn.disabled = false; });
+  });
+
+  summaryBtn.addEventListener("click", function () {
+    if (!configured()) { show("err", "This page has not been connected to its Google Sheet yet."); return; }
+    var email = document.getElementById("email").value.trim();
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+      show("err", "Enter your email address in the form above first, then try again.");
+      document.getElementById("email").focus();
+      return;
+    }
+    summaryBtn.disabled = true;
+    show("info", "Sending...");
+    post({ action: "mysummary", email: email })
+      .then(function (res) { show(res.ok ? "ok" : "err", res.message); })
+      .catch(function () { show("err", "We could not reach the server. Please try again in a minute."); })
+      .then(function () { summaryBtn.disabled = false; });
+  });
+
+  loadPreceptors();
+</script>
+</body>
+</html>
