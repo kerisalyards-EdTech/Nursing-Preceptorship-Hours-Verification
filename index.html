@@ -87,8 +87,14 @@
 
     <div class="row">
       <div>
-        <label for="date">Date</label>
+        <label for="date">Date you finished</label>
         <input id="date" name="date" type="date" required>
+      </div>
+      <div>
+        <label for="time">Time you finished
+          <span class="hint" id="windowNote">Log within 24 hours of finishing</span>
+        </label>
+        <input id="time" name="time" type="time" required>
       </div>
       <div>
         <label for="hours">Hours
@@ -137,6 +143,13 @@
   dateInput.max = todayStr();
   dateInput.value = todayStr();
 
+  var timeInput = document.getElementById("time");
+  function nowTime() {
+    var d = new Date();
+    return String(d.getHours()).padStart(2, "0") + ":" + String(d.getMinutes()).padStart(2, "0");
+  }
+  timeInput.value = nowTime();
+
   // Remember name and email on this device so repeat logging is quicker.
   try {
     document.getElementById("name").value = localStorage.getItem("ph_name") || "";
@@ -157,6 +170,10 @@
       .then(function (r) { return r.json(); })
       .then(function (data) {
         var list = (data && data.preceptors) || [];
+        if (data && data.maxHoursBack) {
+          document.getElementById("windowNote").textContent =
+            "Log within " + data.maxHoursBack + " hours of finishing";
+        }
         select.innerHTML = '<option value="">Select your preceptor</option>';
         list.forEach(function (n) {
           var o = document.createElement("option");
@@ -190,24 +207,31 @@
     var email = document.getElementById("email").value.trim();
     var preceptor = select.value;
     var date = dateInput.value;
+    var time = timeInput.value;
     var hours = document.getElementById("hours").value;
 
     if (!name) { show("err", "Please enter your full name."); document.getElementById("name").focus(); return; }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) { show("err", "Please enter a valid email address."); document.getElementById("email").focus(); return; }
     if (!preceptor) { show("err", "Please select your preceptor."); select.focus(); return; }
     if (!date) { show("err", "Please choose the date."); dateInput.focus(); return; }
+    if (!time) { show("err", "Please enter the time you finished."); timeInput.focus(); return; }
+    var finished = new Date(date + "T" + time);
+    if (isNaN(finished.getTime())) { show("err", "Please check the date and time."); return; }
+    if (finished.getTime() > Date.now() + 5 * 60000) { show("err", "The finish time cannot be in the future."); timeInput.focus(); return; }
     if (!hours || Number(hours) <= 0) { show("err", "Please enter the hours."); document.getElementById("hours").focus(); return; }
 
     submitBtn.disabled = true;
     show("info", "Saving...");
 
-    post({ action: "submit", name: name, email: email, preceptor: preceptor, date: date, hours: Number(hours) })
+    post({ action: "submit", name: name, email: email, preceptor: preceptor, date: date,
+           finishedAt: finished.toISOString(), hours: Number(hours) })
       .then(function (res) {
         if (res.ok) {
           try { localStorage.setItem("ph_name", name); localStorage.setItem("ph_email", email); } catch (e) {}
           show("ok", res.message);
           document.getElementById("hours").value = "";
           select.value = "";
+          timeInput.value = nowTime();
         } else {
           show("err", res.message || "That did not go through. Please try again.");
         }
